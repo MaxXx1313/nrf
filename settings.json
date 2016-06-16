@@ -1,7 +1,0 @@
-{
-
-   "uiPort": 1881,
-
-   "flowFile": "flows.json",
-   "userDir" : "./flow/"
-}
