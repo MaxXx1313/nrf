@@ -2,13 +2,11 @@
 var RED = require('node-red');
 var http = require('http');
 var express = require('express');
-var settings = require('./settings.json');
+var settings = require('./settings.js');
 
 var app = express();
 
 server = http.createServer(function(req,res){app(req,res);});
-
-console.log(red);
 
 
 
@@ -49,6 +47,17 @@ RED.start().then(function() {
     }
 });
 
+function getListenPath() {
+    var listenPath = 'http'+(settings.https?'s':'')+'://'+
+                    (settings.uiHost == '0.0.0.0'?'127.0.0.1':settings.uiHost)+
+                    ':'+settings.uiPort;
+    if (settings.httpAdminRoot !== false) {
+        listenPath += settings.httpAdminRoot;
+    } else if (settings.httpStatic) {
+        listenPath += "/";
+    }
+    return listenPath;
+}
 
 process.on('uncaughtException',function(err) {
     util.log('[red] Uncaught Exception:');
