@@ -15,12 +15,60 @@ try { bcrypt = require('bcrypt'); }
 catch(e) { bcrypt = require('bcryptjs'); }
 var path = require("path");
 var fs = require("fs-extra");
+var basicAuth = require('basic-auth');
 
 var server;
 var app = express();
 
 var flowFile;
 var parsedArgs = {}; // dummy;
+
+
+app.use(basicAuthMiddleware({u1:'u1'}));
+
+
+function basicAuthMiddleware(credentials) {
+
+    var checkPassword;
+    if (pass.length == "32") {
+        // Assume its a legacy md5 password
+        checkPassword = function(p, pass) {
+            return crypto.createHash('md5').update(p,'utf8').digest('hex') === pass;
+        }
+    } else {
+        checkPassword = function(p, pass) {
+            return bcrypt.compareSync(p, pass);
+        }
+    }
+
+    return function(req,res,next) {
+        if (req.method === 'OPTIONS') {
+            return next();
+        }
+        var requestUser = basicAuth(req);
+        if (!requestUser || !credentials[requestUser.name] || !checkPassword(requestUser.pass, credentials[requestUser.name] )) {
+            res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
+            return res.sendStatus(401);
+        }
+        next();
+    }
+}
+
+
+
+
+app.get('/flows', function(req, res, next){
+    console.log('Get flow');
+    next();
+});
+
+app.post('/flows', function(req, res, next){
+    console.log('Set flow');
+    next();
+});
+
+
+
 
 
 try {
@@ -37,6 +85,7 @@ try {
     }
     process.exit();
 }
+
 
 if (parsedArgs.v) {
     settings.verbose = true;
@@ -93,6 +142,8 @@ if (parsedArgs.userDir) {
     settings.userDir = parsedArgs.userDir;
 }
 
+
+
 try {
     RED.init(server,settings);
 } catch(err) {
@@ -108,6 +159,8 @@ try {
     }
     process.exit(1);
 }
+
+
 
 function basicAuthMiddleware(user,pass) {
     var basicAuth = require('basic-auth');
@@ -135,6 +188,8 @@ function basicAuthMiddleware(user,pass) {
         next();
     }
 }
+
+
 
 if (settings.httpAdminRoot !== false && settings.httpAdminAuth) {
     RED.log.warn(RED.log._("server.httpadminauth-deprecated"));
@@ -171,6 +226,9 @@ function getListenPath() {
     return listenPath;
 }
 
+
+
+
 RED.start().then(function() {
     if (settings.httpAdminRoot !== false || settings.httpNodeRoot !== false || settings.httpStatic) {
         server.on('error', function(err) {
@@ -205,6 +263,8 @@ RED.start().then(function() {
         RED.log.error(err);
     }
 });
+
+
 
 
 process.on('uncaughtException',function(err) {
