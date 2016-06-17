@@ -4,6 +4,7 @@
 var RED = require("node-red");
 var settingsFile = './settings.json';
 
+var bodyParser = require("body-parser");
 
 
 var http = require('http');
@@ -24,7 +25,7 @@ var flowFile;
 var parsedArgs = {}; // dummy;
 
 
-app.use(basicAuthMiddleware({u1:'u1'}));
+app.use(basicAuthMiddleware({u1:'u1', u2:'u2'}));
 
 
 function basicAuthMiddleware(credentials) {
@@ -78,26 +79,40 @@ server.setMaxListeners(0);
 
 
 
+///////
+
+var maxApiRequestSize = settings.apiMaxLength || '1mb';
+app.use(bodyParser.json({limit:maxApiRequestSize}));
+app.use(bodyParser.urlencoded({limit:maxApiRequestSize,extended:true}));
+
+
 app.get('/flows', function(req, res, next){
     RED.log.info('Get flow');
     var filename = path.join(settings.userDir, req.user.name, settings.flowFile);
 
-    var stream = fs.createReadStream(filename);
+    var stream = fs.createReadStream(filename);//.pipe(res);
     stream.on('error', function (error) {
         res.send(''); // like empty file :)
     });
-    stream.on('readable', function () {stream.pipe(res);});
+    stream.on('readable', function () { stream.pipe(res);});
 
     // next();
 });
 
 app.post('/flows', function(req, res, next){
     RED.log.info('Set flow');
+    var flows = req.body;
     var filepath = path.join(settings.userDir, req.user.name);
     var filename = path.join(settings.userDir, req.user.name, settings.flowFile);
 
-    fs.mkdirSync(filepath);
-    fs.writeFile(filename, req.body, {flag:'w+'}, (err)=>{
+    try{
+        fs.mkdirSync(filepath);
+    }catch(err){
+        if(err.code !== "EEXIST"){
+            throw (err);
+        }
+    }
+    fs.writeFile(filename, JSON.stringify(flows), {flag:'w+'}, (err)=>{
         if(err){
             res.status(500).send(err);
         }else{
