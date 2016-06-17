@@ -29,16 +29,14 @@ app.use(basicAuthMiddleware({u1:'u1'}));
 
 function basicAuthMiddleware(credentials) {
 
-    var checkPassword;
-    if (pass.length == "32") {
-        // Assume its a legacy md5 password
-        checkPassword = function(p, pass) {
-            return crypto.createHash('md5').update(p,'utf8').digest('hex') === pass;
-        }
-    } else {
-        checkPassword = function(p, pass) {
-            return bcrypt.compareSync(p, pass);
-        }
+    // Assume its a legacy md5 password
+    var checkPassword = function(p, pass) {
+
+            if (pass.length == "32") {
+                return crypto.createHash('md5').update(p,'utf8').digest('hex') === pass;
+            } else {
+                return bcrypt.compareSync(p, pass);
+            }
     }
 
     return function(req,res,next) {
@@ -161,7 +159,7 @@ try {
 }
 
 
-
+/*
 function basicAuthMiddleware(user,pass) {
     var basicAuth = require('basic-auth');
     var checkPassword;
@@ -188,7 +186,7 @@ function basicAuthMiddleware(user,pass) {
         next();
     }
 }
-
+*/
 
 
 if (settings.httpAdminRoot !== false && settings.httpAdminAuth) {
