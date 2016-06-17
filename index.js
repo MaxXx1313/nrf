@@ -85,7 +85,7 @@ var maxApiRequestSize = settings.apiMaxLength || '1mb';
 app.use(bodyParser.json({limit:maxApiRequestSize}));
 app.use(bodyParser.urlencoded({limit:maxApiRequestSize,extended:true}));
 
-
+// BUG: httpAdminRoot must be empty
 app.get('/flows', function(req, res, next){
     RED.log.info('Get flow');
     var filename = path.join(settings.userDir, req.user.name, settings.flowFile);
