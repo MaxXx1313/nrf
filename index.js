@@ -1,16 +1,175 @@
 
-var RED = require('node-red');
-var http = require('http');
-var express = require('express');
-var settings = require('./settings.js');
 
+
+var RED = require("node-red");
+var settingsFile = './settings.json';
+
+
+
+var http = require('http');
+var https = require('https');
+var util = require("util");
+var express = require("express");
+var crypto = require("crypto");
+try { bcrypt = require('bcrypt'); }
+catch(e) { bcrypt = require('bcryptjs'); }
+var path = require("path");
+var fs = require("fs-extra");
+
+var server;
 var app = express();
 
-server = http.createServer(function(req,res){app(req,res);});
+var flowFile;
+var parsedArgs = {}; // dummy;
+
+
+try {
+    var settings = require(settingsFile);
+    settings.settingsFile = settingsFile;
+} catch(err) {
+    console.log("Error loading settings file: "+settingsFile)
+    if (err.code == 'MODULE_NOT_FOUND') {
+        if (err.toString().indexOf(settingsFile) === -1) {
+            console.log(err.toString());
+        }
+    } else {
+        console.log(err);
+    }
+    process.exit();
+}
+
+if (parsedArgs.v) {
+    settings.verbose = true;
+}
+
+if (settings.https) {
+    server = https.createServer(settings.https,function(req,res){app(req,res);});
+} else {
+    server = http.createServer(function(req,res){app(req,res);});
+}
+server.setMaxListeners(0);
 
 
 
-RED.init(server,settings);
+
+
+function formatRoot(root) {
+    if (root[0] != "/") {
+        root = "/" + root;
+    }
+    if (root.slice(-1) != "/") {
+        root = root + "/";
+    }
+    return root;
+}
+
+if (settings.httpRoot === false) {
+    settings.httpAdminRoot = false;
+    settings.httpNodeRoot = false;
+} else {
+    settings.httpRoot = settings.httpRoot||"/";
+    settings.disableEditor = settings.disableEditor||false;
+}
+
+if (settings.httpAdminRoot !== false) {
+    settings.httpAdminRoot = formatRoot(settings.httpAdminRoot || settings.httpRoot || "/");
+    settings.httpAdminAuth = settings.httpAdminAuth || settings.httpAuth;
+} else {
+    settings.disableEditor = true;
+}
+
+if (settings.httpNodeRoot !== false) {
+    settings.httpNodeRoot = formatRoot(settings.httpNodeRoot || settings.httpRoot || "/");
+    settings.httpNodeAuth = settings.httpNodeAuth || settings.httpAuth;
+}
+
+settings.uiPort = parsedArgs.port||settings.uiPort||1880;
+settings.uiHost = settings.uiHost||"0.0.0.0";
+
+if (flowFile) {
+    settings.flowFile = flowFile;
+}
+if (parsedArgs.userDir) {
+    settings.userDir = parsedArgs.userDir;
+}
+
+try {
+    RED.init(server,settings);
+} catch(err) {
+    if (err.code == "not_built") {
+        console.log("Node-RED has not been built. See README.md for details");
+    } else {
+        console.log("Failed to start server:");
+        if (err.stack) {
+            console.log(err.stack);
+        } else {
+            console.log(err);
+        }
+    }
+    process.exit(1);
+}
+
+function basicAuthMiddleware(user,pass) {
+    var basicAuth = require('basic-auth');
+    var checkPassword;
+    if (pass.length == "32") {
+        // Assume its a legacy md5 password
+        checkPassword = function(p) {
+            return crypto.createHash('md5').update(p,'utf8').digest('hex') === pass;
+        }
+    } else {
+        checkPassword = function(p) {
+            return bcrypt.compareSync(p,pass);
+        }
+    }
+
+    return function(req,res,next) {
+        if (req.method === 'OPTIONS') {
+            return next();
+        }
+        var requestUser = basicAuth(req);
+        if (!requestUser || requestUser.name !== user || !checkPassword(requestUser.pass)) {
+            res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
+            return res.sendStatus(401);
+        }
+        next();
+    }
+}
+
+if (settings.httpAdminRoot !== false && settings.httpAdminAuth) {
+    RED.log.warn(RED.log._("server.httpadminauth-deprecated"));
+    app.use(settings.httpAdminRoot, basicAuthMiddleware(settings.httpAdminAuth.user,settings.httpAdminAuth.pass));
+}
+
+if (settings.httpAdminRoot !== false) {
+    app.use(settings.httpAdminRoot,RED.httpAdmin);
+}
+if (settings.httpNodeRoot !== false && settings.httpNodeAuth) {
+    app.use(settings.httpNodeRoot,basicAuthMiddleware(settings.httpNodeAuth.user,settings.httpNodeAuth.pass));
+}
+if (settings.httpNodeRoot !== false) {
+    app.use(settings.httpNodeRoot,RED.httpNode);
+}
+
+if (settings.httpStatic) {
+    settings.httpStaticAuth = settings.httpStaticAuth || settings.httpAuth;
+    if (settings.httpStaticAuth) {
+        app.use("/",basicAuthMiddleware(settings.httpStaticAuth.user,settings.httpStaticAuth.pass));
+    }
+    app.use("/",express.static(settings.httpStatic));
+}
+
+function getListenPath() {
+    var listenPath = 'http'+(settings.https?'s':'')+'://'+
+                    (settings.uiHost == '0.0.0.0'?'127.0.0.1':settings.uiHost)+
+                    ':'+settings.uiPort;
+    if (settings.httpAdminRoot !== false) {
+        listenPath += settings.httpAdminRoot;
+    } else if (settings.httpStatic) {
+        listenPath += "/";
+    }
+    return listenPath;
+}
 
 RED.start().then(function() {
     if (settings.httpAdminRoot !== false || settings.httpNodeRoot !== false || settings.httpStatic) {
@@ -47,17 +206,6 @@ RED.start().then(function() {
     }
 });
 
-function getListenPath() {
-    var listenPath = 'http'+(settings.https?'s':'')+'://'+
-                    (settings.uiHost == '0.0.0.0'?'127.0.0.1':settings.uiHost)+
-                    ':'+settings.uiPort;
-    if (settings.httpAdminRoot !== false) {
-        listenPath += settings.httpAdminRoot;
-    } else if (settings.httpStatic) {
-        listenPath += "/";
-    }
-    return listenPath;
-}
 
 process.on('uncaughtException',function(err) {
     util.log('[red] Uncaught Exception:');

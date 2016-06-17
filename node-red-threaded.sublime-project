@@ -1,0 +1,9 @@
+{
+	"folders":
+	[
+		{
+			"path": "."
+		},
+    {"path":"node_modules/node-red/"}
+	]
+}
