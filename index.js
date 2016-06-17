@@ -29,42 +29,21 @@ app.use(basicAuthMiddleware({u1:'u1'}));
 
 function basicAuthMiddleware(credentials) {
 
-    // Assume its a legacy md5 password
-    var checkPassword = function(p, pass) {
-
-            if (pass.length == "32") {
-                return crypto.createHash('md5').update(p,'utf8').digest('hex') === pass;
-            } else {
-                return bcrypt.compareSync(p, pass);
-            }
-    }
-
     return function(req,res,next) {
         if (req.method === 'OPTIONS') {
             return next();
         }
         var requestUser = basicAuth(req);
-        if (!requestUser || !credentials[requestUser.name] || !checkPassword(requestUser.pass, credentials[requestUser.name] )) {
+        if (!requestUser || !credentials[requestUser.name] || requestUser.pass !== credentials[requestUser.name] ) {
             res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
             return res.sendStatus(401);
         }
+        req.user = {
+            name: credentials[requestUser.name]
+        };
         next();
     }
 }
-
-
-
-
-app.get('/flows', function(req, res, next){
-    console.log('Get flow');
-    next();
-});
-
-app.post('/flows', function(req, res, next){
-    console.log('Set flow');
-    next();
-});
-
 
 
 
@@ -95,6 +74,39 @@ if (settings.https) {
     server = http.createServer(function(req,res){app(req,res);});
 }
 server.setMaxListeners(0);
+
+
+
+
+app.get('/flows', function(req, res, next){
+    RED.log.info('Get flow');
+    var filename = path.join(settings.userDir, req.user.name, settings.flowFile);
+
+    var stream = fs.createReadStream(filename);
+    stream.on('error', function (error) {
+        res.send(''); // like empty file :)
+    });
+    stream.on('readable', function () {stream.pipe(res);});
+
+    // next();
+});
+
+app.post('/flows', function(req, res, next){
+    RED.log.info('Set flow');
+    var filepath = path.join(settings.userDir, req.user.name);
+    var filename = path.join(settings.userDir, req.user.name, settings.flowFile);
+
+    fs.mkdirSync(filepath);
+    fs.writeFile(filename, req.body, {flag:'w+'}, (err)=>{
+        if(err){
+            res.status(500).send(err);
+        }else{
+            res.send('OK');
+        }
+    });
+    // next();
+});
+
 
 
 
